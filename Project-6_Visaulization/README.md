@@ -1,5 +1,5 @@
 Summary <br>
-The visualization documents the chance of survival of different types of passengers. With this visualization, you will better understand the consequence of the event and how people react to such accident. 
+The visualization documents the chance of survival of different types of passengers. With this visualization, you will better understand the consequence of the event and how people react to such accident. (Link to bl.ocks gist https://bl.ocks.org/bmokk/0c7c97e9e52fc9acf3fb260166b56cb0)
 
 Design - explain any design choices you made including changes to the visualization after collecting feedback <br>
 
