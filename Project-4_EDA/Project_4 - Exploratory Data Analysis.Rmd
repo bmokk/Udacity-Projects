@@ -1,0 +1,561 @@
+---
+title: "Project - Exploratory Data Analysis"
+author: "Bernard Mok"
+date: "2016¦~10¤ë17¤é"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo=FALSE, warning=FALSE, message=FALSE)
+```
+
+##Introduction
+I have picked the prospect loan data set for this particular project as I am working in the banking industry and would like to have a taste of analyzing a huge portfolio of loan data. 
+
+My question on this dataset is "What are the contributing factors to bad loans which are charged off, defaulted or past due, and good loands, which had completed payments"
+
+```{r}
+# Load library and read in data to prepare for the analysis
+library(ggplot2)
+library(GGally)
+library(RColorBrewer)
+library(reshape2)
+library(gridExtra)
+library(dplyr)
+library(lubridate)
+library(corrplot)
+
+# Read in data in dataframe for analysis
+df <- read.csv('prosperLoanData.csv', sep=",")
+
+# Create another data frame with N/A prosper score excluded
+df_prosperscore = subset(df, !is.na(df$ProsperScore))
+```
+
+```{r}
+# Helper functions
+
+# Function to create histogram by inputing variable and bins
+create_histogram <- function(data_frame_input, variable, bins) {
+  return(ggplot(aes_string(x = variable), data = data_frame_input) +
+           geom_histogram(bins = bins))
+}
+
+# Function to create bar plot by inputing variable
+create_barplot <- function(data_frame_input, variable) {
+  return(ggplot(aes_string(x = variable), data = data_frame_input) +
+           geom_bar())
+}
+
+```
+
+
+##Univariate Plot
+```{r}
+# First understand basic information of the dataset
+nrow(df)
+ncol(df)
+str(df)
+summary(df)
+
+```
+
+The data set is huge with 113937 observations and 81 variables.
+
+```{r loan status univariate}
+# Create bar plot and statistics to understand loan status
+create_barplot(df, "LoanStatus") + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1))
+
+round(table(df$LoanStatus)/nrow(df)*100,1)
+```
+
+Charged off and defaulted loans comprise of around 15% of the total figure, which is quite high from a number-of-case perspective. 
+
+```{r estimated return univariate}
+# Create histogram of estimated return data
+create_histogram(df, "EstimatedReturn", 50)
+summary(df$EstimatedReturn)
+```
+
+Estimated return displays a normal distribution. Loan estimated returns range from 28.4% to -18.3%, with a mean of 9.6%. 
+
+```{r prosper score univariate}
+create_barplot(df, "ProsperScore")
+create_barplot(df_prosperscore, "ProsperScore")
+mean(as.numeric(df_prosperscore$ProsperScore))
+```
+
+Prosper score displays a normal distribution. A lot of data has no prosper rating and I have used a new dataframe excluding N/A prosper rating to create a new plot. The mean and median of prosper raitng are similar, which are 5.95 and 6 respectively.  
+
+```{r credit line univariate}
+create_histogram(df, "CurrentCreditLines", 30)
+summary(df$CurrentCreditLines)
+```
+
+Loan applicants have an average of 10.32 credit lines while applying for the loan. Some applicants go to an extreme of having a maximum of 59 credit lines.
+
+```{r 7 years credit line univariate}
+create_histogram(df, "TotalCreditLinespast7years", 30)
+summary(df$TotalCreditLinespast7years)
+```
+
+Over the past 7 years, loan applicants have an average of 26.75 credit lines while applying for the loan.
+
+```{r inquiries univariate}
+# Create a historgram for total inquiries data and exclude the 1% outlier. 
+create_histogram(df, "TotalInquiries",30) +
+  xlim(0, quantile(df$TotalInquiries, 0.99, na.rm = TRUE)) +
+  scale_y_log10()
+
+summary(df$TotalInquiries)
+```
+
+Total enquiires data was right skewed and I have attempted to transform the data with log scale. After transformation, we can see that the count decreases constantly as the number of total inquiries increase. Average of 5.584 inquiries are made to the loan credit profile at the time the file was pulled. 
+
+```{r delinquencies univariate}
+# Create histogram for delinquency data
+create_histogram(df, "DelinquenciesLast7Years", 50)
+
+# Log transform the data in order to better understand the delinquency data
+ggplot(data = df, aes(x = DelinquenciesLast7Years)) +
+  geom_histogram(aes(fill=..count..)) +
+  scale_y_log10() 
+```
+
+The log transfomred data shows that the number of counts decreases at a constant rate with the increase of delinquency. 
+
+```{r card utilization univariate}
+create_histogram(df, "BankcardUtilization", 50) +
+  scale_x_continuous(limit = c(0,1.5))
+
+summary(df$BankcardUtilization)
+```
+
+Average bank card utilization of the borrowers is 56%, which is quite high from my perspective. I think the bank card utilization is an important factor for considering the prosper score of the borrower. 
+
+```{r bank credit univariate}
+# I also look at the data of available bank card credit and log transform the data to generate a normal distribution. 
+create_histogram(df, "AvailableBankcardCredit", 100) +
+  scale_x_log10()
+
+summary(df$AvailableBankcardCredit)
+```
+
+By transforming the data of available bank credit, we obtain a normally distributed plot. The borrowers' average available credit is 11210, while 75% of the borrowers have a credit below 13180.
+ 
+ 
+```{r debt to income ratio univariate}
+# Transform debt to income ratio data to obtain a normal distribution
+create_histogram(df, "DebtToIncomeRatio", bins = 30) +
+  scale_y_log10() 
+
+summary(df$DebtToIncomeRatio)
+```
+
+After transforming the data with log, we can see that the count of debt to income ratio decreases exponentially as the ratio increase. The count jumps as the ratio reaches 10. 
+
+Average debt to income ratio is 27.6%. Maxium debt to income ratio can go as high as 1001% which surprises me. I guess these borrowers will need to offer a very high return to the investors in order to justify the potential risk. 
+
+```{r income range univariate}
+positions <- c("$0", "$1-24,999", "$25,000-49,999", "$50,000-74,999", 
+               "$75,000-99,999", "$100,000+", "Not displayed", 
+               "Not employed")
+
+create_barplot(df, "IncomeRange") +
+  scale_x_discrete(limits = positions)
+
+summary(df$IncomeRange)
+```
+
+Most of the loan applicants have income below $74,999.  
+
+```{r monthly income univariate}
+# Create a histogram of stated monthly income
+ggplot(aes(x = StatedMonthlyIncome), data = df) +
+  geom_histogram(aes(fill = ..count..), bins = 40) +
+  xlim(0,50000)
+
+# Transform the stated monthly income with log and create a histogram
+ggplot(aes(x = StatedMonthlyIncome), data = df) +
+  geom_histogram(aes(fill = ..count..), bins = 40) +
+  scale_y_log10() +
+  xlim(0,50000)
+
+summary(df$StatedMonthlyIncome)
+```
+
+The stated monthly income histogram is right skewed and not suitable for further analytical purpose. With log transformation, we can see that the count of borrowers decreases geometrically as stated monthly income increases. 
+
+On the other hand, the average monthly income of borrowers is 5,608, which is not too high and correlates with the income range data.  
+
+
+```{r loan amount univariate}
+# Transform loan original amount with log
+ggplot(data = df, aes(x = LoanOriginalAmount)) + 
+  geom_histogram(aes(fill = ..count..), bins = 20) +
+  scale_y_log10()
+
+summary(df$LoanOriginalAmount)
+```
+
+Most of the loans initiated are of smaller size (<10000). By transforming the data with log 10, we can see a certain pattern with the data, that the count is decreasing at a constant rate as the loan original amount increases. Several spikes are observed in the histogram as we can assume that customer tends to borrow loans at a certain fixed amount (e.g. 5000, 10000, 15000, 20000, etc.)
+
+```{r monthly payment univariate}
+# Transform monthly loan payment with log. 
+create_histogram(df, "MonthlyLoanPayment", 30) +
+  scale_y_log10()
+
+summary(df$MonthlyLoanPayment)
+```
+
+Mean monthly payment is $272.5, which is quite a small figure from my perspective. Since the data is right skewed, I have transformed the data with log 10 scale and we can see that the count decreases at a seemingly constant rate as the monthly loan payment increases. 
+
+
+```{r investment univariate}
+df$investment_from_friend_percentage <- df$InvestmentFromFriendsAmount / 
+  df$LoanOriginalAmount
+
+ggplot(data = subset(df, df$investment_from_friend_percentage != 0), 
+       aes(x = investment_from_friend_percentage, fill = ..count..)) + 
+  geom_histogram() +
+  scale_y_log10()
+
+summary(df$investment_from_friend_percentage)
+```
+
+Investment from friend is an absolute number and cannot be easily compared across different loan. A new variable indicating the percentage of investment from friend in the individual loans is thus created. With the summary statistics, we can see that friends' investment in loans are quite low with an average of 2.98%. By log transforming the data, we can see the similar pattern again that the count decreases as percentage increases. 
+
+```{r investors univariate}
+ggplot(data = df, aes(x = Investors)) +
+  geom_histogram(bins = 30) +
+  scale_x_log10()
+
+summary(df$Investors)
+```
+
+There are on average 80 investors in every loans. By log transforming the data, we can once again see the similar pattern that the number of investors decrease at a constant rate as investor increases. 
+
+##Univariate Aanalysis
+There are 113937 line of loan data with 81 features. A number of features have been investigated in the above univariate plots and below are the preliminary observations: 
+
+- Charge off together with default comprise of ~15% of the total loan portfolio which is quite high. 
+- 33% of the loans have completed repayment and 50% are currently undergoing repayment. 
+- Prosper rating data is normally distributed. 
+- More than 90% of the loans' estimated return is between 5% - 15%. 
+- Loans originated by Prosper are relatively small in size with 75% below $12,000.
+
+Prosper rating is the feature of interest in this dataset. I would like to understand what are the factors affecting the prosper rating and how does the prosper rating 
+
+I have created another variable to understand the percentage of investment of total loan amount by applicants' friends.  
+
+##Bivariate Plot
+I will create a subset of data to apply GGALLY to some of the features I have mentioned above. 
+
+
+```{r corrplot}
+df_prosperscore <- subset(df, !is.na(df$ProsperScore))
+df_prosperscore$ProsperScore <- as.numeric(as.character(df_prosperscore$ProsperScore))
+
+df.analysis = select(df_prosperscore, ProsperScore, EstimatedReturn,
+                     TotalCreditLinespast7years, OpenRevolvingAccounts, 
+                     OpenRevolvingMonthlyPayment, DelinquenciesLast7Years, 
+                     PublicRecordsLast10Years, BankcardUtilization, TotalTrades,
+                     TradesNeverDelinquent..percentage., TradesOpenedLast6Months, 
+                     DebtToIncomeRatio, StatedMonthlyIncome, LoanOriginalAmount, 
+                     MonthlyLoanPayment, LP_InterestandFees, LP_ServiceFees, 
+                     LP_CollectionFees)
+
+df.analysis_corrplot = subset(df.analysis, df.analysis$DebtToIncomeRatio != "NA")
+M <- cor(df.analysis_corrplot)
+corrplot(M, method = "square")
+```
+
+From the above corrplot, I can see that the below factors are having a certain relationship with the prosper score: 
+1. Delinquencies Last 7 Years
+1. Bank card utilization
+2. Trades opened last 6 months
+3. Loan amount
+4. Debt to income ratio
+5. Monthly income 
+
+```{r Delinquencies}
+# Create a box plot for delinquencies data
+ggplot(data = subset(df, DelinquenciesLast7Years != 0), 
+       aes(x = factor(ProsperScore), 
+           y = DelinquenciesLast7Years, 
+           group = ProsperScore)) + 
+  geom_boxplot() + 
+  ylim(0, quantile(subset(df, DelinquenciesLast7Years != 0)
+                   $DelinquenciesLast7Years, 0.99))
+
+# Create a new variable indicating if the borrowers had ever become delinquent in last 7 years
+df$Delinquency = df$DelinquenciesLast7Years == 0
+
+# Create a bar plots of delinquency count of different prosper score. 
+ggplot(data = subset(df, DelinquenciesLast7Years != 0 &
+                       !is.na(ProsperScore)), 
+       aes(x = DelinquenciesLast7Years)) + 
+  geom_bar() + 
+  facet_wrap(~ProsperScore)
+
+# Create a fill bar plot indicating percentage of borrowers within different prosper score with previous delinquency in last 7 years. 
+ggplot(data = subset(df, !is.na(ProsperScore)), 
+       aes(x = ProsperScore)) +
+  geom_bar(aes(fill=factor(Delinquency)), 
+           position = "fill")
+```
+
+According to the box plot, the different prospoer scores have similiar range and median in delinquencies data. However with a facet bar plot, we can see that highger prosper score loan in general have way less number of delinquencies than the lower score loans. 
+
+
+```{r bank card utilization bivariate}
+# Create jitter plot for bank utilization against prosper score
+ggplot(data = df, aes(x = ProsperScore, y = BankcardUtilization)) +
+  geom_jitter(alpha = 0.25) +
+  ylim(0, quantile(df.analysis$BankcardUtilization, 0.99))
+
+# Create box plot for bank utilization against prosper score
+ggplot(data = df_prosperscore, 
+       aes(x = factor(ProsperScore), y = BankcardUtilization, 
+           group = ProsperScore)) +
+  geom_boxplot() 
+```
+
+The jitter plot shows the clear indication that a lower bank card utilization will lead to a higher prosper score. The box plot decreasing median along higher propsper score further confirm my observation. 
+
+```{r trade opened bivariate}
+# Create a new variable indicating if borrowers had opened trade in last 6 months
+df_prosperscore$trade_opened <- df_prosperscore$TradesOpenedLast6Months > 0
+
+# Create bar plot to indicate relationship between prosper score and borrowers with trade opened in last 6 months. 
+ggplot(data = df_prosperscore, 
+       aes(x = factor(ProsperScore), fill = trade_opened )) +
+  geom_bar(position = "fill") +
+  guides(fill = guide_legend(title = "Any trade opened in last 6 months?")) +
+  theme(legend.position = "bottom")
+
+```
+
+A new variable trade_opened is created to indicate if the borrower had ever opened a new trade in the last 6 months. The bar plot indicates that applicants with higher prosper score in general has less trade opened in last 6 months. 
+
+```{r Loan Amount Bivariate}
+# Create a box plot for loan amount against prosper score
+ggplot(data = subset(df, !is.na(df$ProsperScore)),  
+       aes(x = factor(ProsperScore), y = LoanOriginalAmount)) + 
+  geom_boxplot()
+```
+
+The plot indicates that loans with larger loan amount has a higher propser score by comparing the median. However, it is unclear if the larger loan amount leads to the higher prosper score or vice versa. 
+
+```{r Debt to Income Ratio Bivariate}
+# Crate a jitter plot for debt to income ratio against propser score
+ggplot(data = subset(df, !is.na(df$ProsperScore)), 
+       aes(x = ProsperScore, y = DebtToIncomeRatio)) + 
+  geom_jitter(alpha = 0.25) +
+  ylim(0,1)
+
+# Crate a box plot for debt to income ratio against propser score
+ggplot(data = subset(df, !is.na(df$ProsperScore)), 
+       aes(x = factor(ProsperScore), y = DebtToIncomeRatio, 
+           group = ProsperScore)) + 
+  ylim(0,1) + 
+  geom_boxplot()
+```
+
+Again from the jitter plot and box plot, it is clear that the debt to income ratio has a significant correlation with propser score. The lower the debt to income ratio, the higher the prosper score. 
+
+```{r Monthly Income}
+# Create a boxplot for monthly stated income against prosper score
+ggplot(data = df.analysis, aes(x = factor(ProsperScore), 
+                               y = StatedMonthlyIncome, 
+                               group = ProsperScore)) +
+  geom_boxplot() + 
+  ylim(0, quantile(df.analysis$StatedMonthlyIncome, 0.99))
+
+# Create a jitter plot for monthly stated income against prosper score
+ggplot(data = df.analysis, 
+       aes(x = ProsperScore, y = StatedMonthlyIncome)) +
+  geom_jitter(alpha = 0.25) + 
+  ylim(0, quantile(df.analysis$StatedMonthlyIncome, 0.99))
+```
+
+From the box plot, we can see that the median of income increases with increasing prosper score. One interesting fact is that the interquartile range of the monthly income also increases as prosper score inreases. The idea can be displayed more clearly with a jitter plot. For prosper score below 8, most of the distributions are concentrated below monthly income of 10000, as the score increases, the income figure becomes more disbursed. 
+
+Another interesting fact is that we can see strip of lines in the jitter plot. This may be due to the fact that people usually report their stated income with an approximate whole number (e.g. 10000, 11000, 12000, etc.)
+
+
+```{r Estimated Return}
+# Create a box plot for estimated return against prosper score
+ggplot(data = subset(df, !is.na(df$ProsperScore)), 
+       aes(x = factor(ProsperScore), y = EstimatedReturn, 
+           group = ProsperScore)) +
+  geom_boxplot() +
+  guides(fill=FALSE)
+```
+
+The plot looks interesting to me as I originally thought all loans should have similar estimated return. On a second thought, loans with high prosper score are less likely to default and thus the company will charge the applicants a lower interest rate, and thus a lower estimated return. 
+
+
+```{r On Time Payment}
+# Create a new variable indicating the percentage of payments which are on time
+df$OnTimePercentage <- df$OnTimeProsperPayments/df$TotalProsperPaymentsBilled
+
+# Craete a box plot for on time percentage against prosper score
+ggplot(data = subset(df, df$OnTimePercentage != 1), 
+       aes(x = factor(ProsperScore), y = OnTimePercentage, group = ProsperScore)) +
+  geom_boxplot()
+
+# Craete a jitter plot for on time percentage against prosper score
+ggplot(data = subset(df, df$OnTimePercentage != 1), 
+       aes(x = ProsperScore, y = OnTimePercentage)) +
+  geom_jitter()
+
+# Create a new logical variable indicating if the loan repayments are 100% on time or not
+df$OnTime = df$OnTimePercentage == 1
+
+# Craete a filled bar plot with on time logical variable and prosper score
+ggplot(data = subset(df, !is.na(df$OnTime)), 
+       aes(x = ProsperScore)) + 
+  geom_bar(aes(fill=factor(OnTime)), position = "fill")
+```
+
+I have created new variables to understand the percentage of repayment pattern of individual loans. As seen from the graph, most of the loans are repaying 100% on time. 
+
+From the box plot, there does not seem to be much correlation between the score and the percentage. The median across different scores are similar. One noticible differnece is that higher prosper score seems to have a higher 3 rd quartlie range.
+
+However, by plotting the filled bar chart, we have a different picture showing that indeed previously 100% ontime record favours a higher prosper score. 
+
+##Bivariate Analysis
+# Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in the dataset?
+- Stated Monthly Income has a strong relationship with prosper score. This is not surprising considering a higher monthly income indicates a higher ability to pay back the loan. 
+
+- Bank Card Utilization shows a very strong relationship with prosper score. Prosper Score of 10-11 have the lowest bank card utilization rate. I think this again is logical as bank card utilization indicates the spending habit of an individual. 
+- Debt to Income Ratio has a strong relationship with prosper score. The logic behind should be similar to that of monthly income relationship.
+- Delinquencies history have a very strong relationship with prosper score. As indicated by the bar plot, loans with no delinquencies are highly favoured and are ranked with a higher prosper score. 
+- On time repayment seems to be a strong factor for affecting the prosper rating decision. 
+
+##Multivariate Plot
+```{r Prosper Score Multivariate}
+# Create a new date variable with lubridate as.date function
+df$date = as.Date(df$ListingCreationDate)
+df$year = format(df$date, '%Y')
+
+# Create a line chart from 2009 to 2014 indicating the change of estiamted return of loans with different prosper score. 
+ggplot(data = subset(df, !is.na(df$ProsperScore)), 
+       aes(x = date, y = EstimatedReturn, color = factor(ProsperScore), 
+           group = factor(ProsperScore))) + 
+  geom_smooth() +
+  scale_color_brewer(palette = "RdBu")
+
+# Create a line chart from 2009 to 2014 indicating the change of loan amount of loans with different prosper score. 
+ggplot(data = subset(df, !is.na(df$ProsperScore)), 
+       aes(x = date, y = LoanOriginalAmount, color = factor(ProsperScore), 
+           group = factor(ProsperScore))) + 
+  geom_smooth() +
+  scale_color_brewer(palette = "RdBu")
+```
+
+The plots shows the change of estimated return and loan amount of loans of different prosper score from 2009 to 2014. One can see that the returns of different types of loans converge to similar percentage and loan amount gradually increases.
+
+```{r Income Range Multivariate}
+# Create new data frame grouped by year and income range
+df_EstimatedReturn = df %>% group_by(year, IncomeRange) %>% 
+  summarise(EstimatedReturn_mean = mean(EstimatedReturn, na.rm = TRUE)) 
+
+# Create line plot time series plot of mean estimated return of loans with different income range
+ggplot(data = subset(df_EstimatedReturn, year > "2007"), 
+       aes(x = year, y = EstimatedReturn_mean, 
+           group = IncomeRange, color = IncomeRange)) +
+  geom_line(size = 1) +
+  scale_color_brewer(palette = "RdBu")
+
+# Create new data frame grouped by year and loan original amount
+df_LoanOriginalAmount = df %>% group_by(year, IncomeRange) %>% 
+  summarise(LoanOriginalAmount_mean = mean(LoanOriginalAmount, na.rm = TRUE)) 
+
+# Create line plot time series plot of mean loan original amount with different income range
+ggplot(data = subset(df_LoanOriginalAmount, year > "2007"), 
+       aes(x = year, y = LoanOriginalAmount_mean, 
+           group = IncomeRange, color = IncomeRange)) +
+  geom_line(size = 1) +
+  scale_color_brewer(palette = "RdBu")
+```
+
+From the above plots, we can see that estimated return of loans of all income range peaked in 2011 and droped afterwards. Loan amount however increases as years progress, with the greatest income range (100,000+) experiencing the fastest growth.
+
+##Multivariate Analysis
+#Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+
+- Estiamted return of loans with different prosper score differ greatly throughout the time period. 
+- Estimated return of all types of loans regardless of prosper score or income range decreases from 2011 to 2014. 
+- Borrowers with higher income range and larger loan size tends to have a higher prosper score.  
+
+##Final Plots
+After pondering around with many plots, I have decided to use three plots to look at the estimated return of the loans. 
+
+#Plot One
+```{r plot one}
+# Create a box plot of estimated return against prosper score
+ggplot(data = subset(df, !is.na(df$ProsperScore)), aes(x = factor(ProsperScore), 
+                                                       y = EstimatedReturn, 
+                                                       group = ProsperScore)) +
+  geom_boxplot() +
+  labs(title = "Estimated Return of Loans with Different Prosper Score") +
+  xlab("Prosper Score") +
+  ylab("Estimated Return") +
+  guides(fill=FALSE)
+
+```
+
+#Description One
+There are three observations form the graph. Firstly, median of estimated return decreases with increasing prosper score. Secondly, lower prosper score loans possess more outliers with lower return, while higher propser score loans have more outliers with higer returns. Thirdly, the interquartile range of estimated returns increases as prosper score increases from 1 to 7, and afterwards gradually decreases as prosper score increases to 11. This may indicates that loans being more risky (as indicated by lower prosper score) will generally be rewarded with a higher return in order to attract investors. 
+
+#Plot Two
+```{r plot two}
+# Create a filled bar chart indicating the percentage of loans with delinquency history across different prosper rating. 
+ggplot(data = subset(df, !is.na(df$Delinquency)&!is.na(df$ProsperScore)), 
+       aes(x = ProsperScore)) +
+  geom_bar(aes(fill=factor(Delinquency)), position = "fill") + 
+  guides(fill=guide_legend(title="Without delinquency?")) + 
+  ylab("Percentage") +
+  xlab("Prosper Score") +
+  labs(title = "Percentage of Loans without delinquency")
+```
+
+#Description Two
+Out of the many factors, delinquency history is highly related to the loans' propser score. According to the above graph, percentage of borrowers with delinquency history decreases with increasing prosper score. To illustrate the effect, we can see that prosper score 1 has nearly 50% of its borrowers with previous delinquent history, while pnly 13% of the prosper score 11 borrowers have such history. The said observation indicates the strong negative relationship between prosper score and delinquency history. 
+
+#Plot Three
+```{r plot three}
+# Create a new date variable in df dataframe
+df$date = as.Date(df$ListingCreationDate)
+
+# Create a line chart from 2009 to 2014 indicating the change of loan amount of loans with different prosper score. 
+ggplot(data = subset(df, !is.na(df$ProsperScore)), 
+       aes(x = date, y = EstimatedReturn, 
+           color = factor(ProsperScore), 
+           group = factor(ProsperScore))) + 
+  guides(color=guide_legend(title="Prosper Score")) +
+  geom_smooth() +
+  labs(title = "Estimated Return of Loans with Different Prosper Score 2009 - 2014") +
+  xlab("Date") +
+  ylab("Estimated Return") +
+  scale_color_brewer(palette = "RdBu")
+```
+
+#Description Three
+From the above graph, we have two intersting observations. Firstly, loans of different prosper score originally have greatly diverged estimated return. The estimated return however slowly converges and gradually arrange in accordance to the prosper score. Lower prosper score loan in general has a higher estimated return. Secondly, we can see that the loans with lowest prosper score (1, 2, 3) had the lowest, or even negative return at the start of 2010. The returns of this lower prosper score however picks up quickly and becomes the three highest estimated reutn loan starting from 2012. 
+
+
+##Reflection
+This is a tough analysis to me as there are so many features. The major difficulty is that I cannot grasp the relationship between these data and I do not know how to start my analysis. And the other difficulty is that I do not know what question I should go for answering. I definitely find this data set interesting but it is very different when you have no clear objective but to explore on your own. After working on the data for a week, I start to have a better sense on where the data is going and can carry on different analysis to understand their relationhsip. ANd once you start to have a feeling over the data, you will know what question you should ask for and how you can find out the answer.  
+
+I think my best successes are to create new variables and find out their relationship with the loan prosper rating.
+
+I would really like to dig out more variables in relation to the propser rating and my ultimate goal will be to develop a model which can predict the prosper rating. However I think I will need machine learning skill and additional information (e.g. age of applicant, more detail credit history, other spending behavior, etc.) to accomplish my goal. 
